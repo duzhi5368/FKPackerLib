@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FKPacketLib", "FKPacketLib\FKPacketLib.vcxproj", "{448F8ADF-6DEF-462F-93F5-0A0EACDB5904}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FKPackTool", "FKPackTool\FKPackTool.vcxproj", "{F4A4C878-7345-461D-B551-90D55AF93EA7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{448F8ADF-6DEF-462F-93F5-0A0EACDB5904}.Debug|Win32.ActiveCfg = Debug|Win32
+		{448F8ADF-6DEF-462F-93F5-0A0EACDB5904}.Debug|Win32.Build.0 = Debug|Win32
+		{448F8ADF-6DEF-462F-93F5-0A0EACDB5904}.Release|Win32.ActiveCfg = Release|Win32
+		{448F8ADF-6DEF-462F-93F5-0A0EACDB5904}.Release|Win32.Build.0 = Release|Win32
+		{F4A4C878-7345-461D-B551-90D55AF93EA7}.Debug|Win32.ActiveCfg = Debug|Win32
+		{F4A4C878-7345-461D-B551-90D55AF93EA7}.Debug|Win32.Build.0 = Debug|Win32
+		{F4A4C878-7345-461D-B551-90D55AF93EA7}.Release|Win32.ActiveCfg = Release|Win32
+		{F4A4C878-7345-461D-B551-90D55AF93EA7}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

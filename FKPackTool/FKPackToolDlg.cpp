@@ -1,0 +1,274 @@
+
+// FKPackToolDlg.cpp : 实现文件
+//
+
+#include "stdafx.h"
+#include "FKPackTool.h"
+#include "FKPackToolDlg.h"
+#include "afxdialogex.h"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#endif
+
+
+// CFKPackToolDlg 对话框
+
+
+
+CFKPackToolDlg::CFKPackToolDlg(CWnd* pParent /*=NULL*/)
+	: CDialogEx(CFKPackToolDlg::IDD, pParent)
+{
+	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+}
+
+void CFKPackToolDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialogEx::DoDataExchange(pDX);
+}
+
+BEGIN_MESSAGE_MAP(CFKPackToolDlg, CDialogEx)
+	ON_WM_PAINT()
+	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON1, &CFKPackToolDlg::OnBnClickedButton1)
+	ON_BN_CLICKED(IDC_BUTTON2, &CFKPackToolDlg::OnBnClickedButton2)
+	ON_BN_CLICKED(IDC_BUTTON3, &CFKPackToolDlg::OnBnClickedButton3)
+	ON_BN_CLICKED(IDC_BUTTON4, &CFKPackToolDlg::OnBnClickedButton4)
+END_MESSAGE_MAP()
+
+
+// CFKPackToolDlg 消息处理程序
+
+BOOL CFKPackToolDlg::OnInitDialog()
+{
+	CDialogEx::OnInitDialog();
+
+	// 设置此对话框的图标。当应用程序主窗口不是对话框时，框架将自动
+	//  执行此操作
+	SetIcon(m_hIcon, TRUE);			// 设置大图标
+	SetIcon(m_hIcon, FALSE);		// 设置小图标
+
+	// TODO: 在此添加额外的初始化代码
+	m_pFKPacket = new CFKPacket();
+	m_pFileList = (CListCtrl*)GetDlgItem( IDC_LIST1 );
+	m_pFileList->SetExtendedStyle( LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT );
+	m_pFileList->InsertColumn(0, "文件路径", LVCFMT_LEFT, 200);
+	m_pFileList->InsertColumn(1, "实际大小", LVCFMT_LEFT, 90);
+	m_pFileList->InsertColumn(2, "压缩大小", LVCFMT_LEFT, 90);
+	m_pFileList->InsertColumn(3, "压缩比", LVCFMT_LEFT, 50);
+
+	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
+}
+
+// 如果向对话框添加最小化按钮，则需要下面的代码
+//  来绘制该图标。对于使用文档/视图模型的 MFC 应用程序，
+//  这将由框架自动完成。
+
+void CFKPackToolDlg::OnPaint()
+{
+	if (IsIconic())
+	{
+		CPaintDC dc(this); // 用于绘制的设备上下文
+
+		SendMessage(WM_ICONERASEBKGND, reinterpret_cast<WPARAM>(dc.GetSafeHdc()), 0);
+
+		// 使图标在工作区矩形中居中
+		int cxIcon = GetSystemMetrics(SM_CXICON);
+		int cyIcon = GetSystemMetrics(SM_CYICON);
+		CRect rect;
+		GetClientRect(&rect);
+		int x = (rect.Width() - cxIcon + 1) / 2;
+		int y = (rect.Height() - cyIcon + 1) / 2;
+
+		// 绘制图标
+		dc.DrawIcon(x, y, m_hIcon);
+	}
+	else
+	{
+		CDialogEx::OnPaint();
+	}
+}
+
+//当用户拖动最小化窗口时系统调用此函数取得光标
+//显示。
+HCURSOR CFKPackToolDlg::OnQueryDragIcon()
+{
+	return static_cast<HCURSOR>(m_hIcon);
+}
+
+
+
+void CFKPackToolDlg::OnBnClickedButton1()
+{
+	BROWSEINFO binfo;
+	memset(&binfo,0x00,sizeof(binfo));
+	binfo.hwndOwner=GetSafeHwnd();
+	TCHAR szSrcPath[MAX_PATH]={0};
+	binfo.lpszTitle=_T("请选择源文件/目录");
+	binfo.ulFlags=BIF_RETURNONLYFSDIRS | BIF_STATUSTEXT;//BIF_BROWSEINCLUDEFILES;//BIF_RETURNONLYFSDIRS;
+	LPITEMIDLIST lpDlist;
+	lpDlist=SHBrowseForFolder(&binfo);
+	if (NULL!=lpDlist)
+	{
+		SHGetPathFromIDList(lpDlist,szSrcPath);
+		m_strSource=szSrcPath;
+		GetDlgItem( IDC_EDIT1 )->SetWindowText( m_strSource );
+	}
+}
+
+
+void CFKPackToolDlg::OnBnClickedButton2()
+{
+	TCHAR szFilter[] = _T("FKPacket包文件 (*.PAK)||");
+	CFileDialog FileDlg(FALSE,
+		_T("pak"),
+		NULL,
+		OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT,
+		szFilter,
+		NULL,
+		0,
+		TRUE);
+	if (IDOK==FileDlg.DoModal())
+	{
+		m_strDestination=FileDlg.GetPathName();
+		GetDlgItem( IDC_EDIT2 )->SetWindowText( m_strDestination );
+	}
+}
+
+// 打包
+void CFKPackToolDlg::OnBnClickedButton3()
+{
+	CString strMsg;
+	int nSrcType=__CheckSourceFileName(m_strSource);
+	if (-1 == nSrcType)
+	{
+		strMsg=_T("请选择资源文件/目录");
+		MessageBox(strMsg);
+		return;
+	}
+	int nDesType=__CheckDestinationFileName(m_strDestination);
+	if (-1 == nDesType)
+	{
+		strMsg=_T("请选择目标文件");
+		MessageBox(strMsg);
+		return;
+	}
+
+	if( m_pFKPacket == NULL )
+	{
+		strMsg=_T("不可预料的错误，请重启本软件");
+		MessageBox(strMsg);
+		return;
+	}
+
+	m_pFKPacket->Clear();
+	if( !m_pFKPacket->CreatePAK( LPCSTR(m_strDestination), LPCSTR(m_strSource) ) )
+	{
+		m_pFKPacket->Clear();
+		strMsg=_T("压缩失败，请联系开发人员");
+		MessageBox(strMsg);
+		return;
+	}
+
+	m_pFKPacket->Clear();
+	strMsg=_T("压缩完成");
+	MessageBox(strMsg);
+	return;
+}
+
+
+int CFKPackToolDlg::__CheckSourceFileName(CString strFileName)
+{
+	if (""==strFileName)
+		return -1;
+
+	if (PathIsDirectory(strFileName))
+	{
+		return 0;
+	}
+	else
+	{
+		// 检查文件是否存在
+		CFileStatus FileStatus;
+		if (!CFile::GetStatus(strFileName,FileStatus))
+		{
+			return -1;
+		}
+
+		return 0;
+	}
+	return -1;
+}
+
+int CFKPackToolDlg::__CheckDestinationFileName(CString strFileName)
+{
+	if (""==strFileName)
+		return -1;
+
+	if (PathIsDirectory(strFileName))
+	{
+		return -1;
+	}
+	else
+	{
+		// 检查目录是否正确
+		int nPosition=strFileName.Find('/');
+		if (-1==nPosition)
+		{
+			nPosition=strFileName.Find('\\');
+		}
+		if (-1==nPosition)
+		{
+			return -1;
+		}
+		CString strPath=strFileName.Left(nPosition);
+		if (PathIsDirectory(strPath))
+		{
+			return 0;
+		}
+
+		return -1;
+	}
+	return -1;
+}
+
+// 查看包文件
+void CFKPackToolDlg::OnBnClickedButton4()
+{
+	CString strMsg;
+	int nDesType=__CheckDestinationFileName(m_strDestination);
+	if (-1 == nDesType)
+	{
+		strMsg=_T("请选择包文件");
+		MessageBox(strMsg);
+		return;
+	}
+	m_pFKPacket->Clear();
+	if( !m_pFKPacket->ReadPAK( LPCSTR(m_strDestination) ) )
+	{
+		m_pFKPacket->Clear();
+		strMsg=_T("读取包文件失败，请联系开发人员");
+		MessageBox(strMsg);
+		return;
+	}
+
+	vector<string> vecFileList = m_pFKPacket->GetAllFileNameInPAK();
+	vector<string>::iterator Ite = vecFileList.begin();
+	int nCol = 0;
+	CString tmp;
+	for( ; Ite != vecFileList.end(); ++Ite )
+	{
+		int nIndex = 0;
+		m_pFileList->InsertItem( nCol, (*Ite).c_str(), nCol );
+		tmp.Format("%dB",m_pFKPacket->GetFileSize((*Ite).c_str()));
+		m_pFileList->SetItemText( nCol, ++nIndex, tmp.GetBuffer() );
+		tmp.Format("%dB", 0 );
+		m_pFileList->SetItemText( nCol, ++nIndex, tmp );
+		tmp.Format("%d%%", 0 );
+		m_pFileList->SetItemText( nCol, ++nIndex, tmp );
+	}
+
+	strMsg=_T("读包完成");
+	MessageBox(strMsg);
+	return;
+}
