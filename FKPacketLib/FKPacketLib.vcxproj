@@ -82,6 +82,11 @@
   <ItemGroup>
     <ClCompile Include="FKPacket.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ZIP\zlib.vcxproj">
+      <Project>{7e3474bd-465c-4d78-823e-b6d4f65b691f}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

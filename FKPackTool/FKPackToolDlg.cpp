@@ -55,7 +55,7 @@ BOOL CFKPackToolDlg::OnInitDialog()
 	m_pFileList->InsertColumn(0, "文件路径", LVCFMT_LEFT, 200);
 	m_pFileList->InsertColumn(1, "实际大小", LVCFMT_LEFT, 90);
 	m_pFileList->InsertColumn(2, "压缩大小", LVCFMT_LEFT, 90);
-	m_pFileList->InsertColumn(3, "压缩比", LVCFMT_LEFT, 50);
+	m_pFileList->InsertColumn(3, "压缩比", LVCFMT_LEFT, 60);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -254,19 +254,35 @@ void CFKPackToolDlg::OnBnClickedButton4()
 
 	vector<string> vecFileList = m_pFKPacket->GetAllFileNameInPAK();
 	vector<string>::iterator Ite = vecFileList.begin();
-	int nCol = 0;
 	CString tmp;
+
+	int nSrcTotal = 0;
+	int nDstTotal = 0;
 	for( ; Ite != vecFileList.end(); ++Ite )
 	{
 		int nIndex = 0;
-		m_pFileList->InsertItem( nCol, (*Ite).c_str(), nCol );
-		tmp.Format("%dB",m_pFKPacket->GetFileSize((*Ite).c_str()));
-		m_pFileList->SetItemText( nCol, ++nIndex, tmp.GetBuffer() );
-		tmp.Format("%dB", 0 );
-		m_pFileList->SetItemText( nCol, ++nIndex, tmp );
-		tmp.Format("%d%%", 0 );
-		m_pFileList->SetItemText( nCol, ++nIndex, tmp );
+		m_pFileList->InsertItem( 0, (*Ite).c_str(), 0 );
+		int nSrcSize = m_pFKPacket->GetFileSize((*Ite).c_str());
+		nSrcTotal += nSrcSize;
+		tmp.Format("%d b", nSrcSize);
+		m_pFileList->SetItemText( 0, ++nIndex, tmp );
+		int nDstSize = m_pFKPacket->GetFileCompressSize((*Ite).c_str());
+		nDstTotal += nDstSize;
+		tmp.Format("%d b", nDstSize );
+		m_pFileList->SetItemText( 0, ++nIndex, tmp );
+		int nValue = nDstSize * 100 / nSrcSize;
+		tmp.Format("%d%%", nValue );
+		m_pFileList->SetItemText( 0, ++nIndex, tmp );
 	}
+
+	m_pFileList->InsertItem( 0, _T("总计"), 0 );
+	tmp.Format("%d Kb", nSrcTotal / 1000);
+	m_pFileList->SetItemText( 0, 1, tmp );
+	tmp.Format("%d Kb", nDstTotal / 1000);
+	m_pFileList->SetItemText( 0, 2, tmp );
+	float fValue = (float)( nDstTotal / 1000 ) / (float)(nSrcTotal / 1000);
+	tmp.Format("%.2f%%", fValue * 100.0f );
+	m_pFileList->SetItemText( 0, 3, tmp );
 
 	strMsg=_T("读包完成");
 	MessageBox(strMsg);
