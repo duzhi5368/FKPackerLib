@@ -32,8 +32,8 @@ private:
 	// 文件单元信息
 	struct SFileEntry
 	{
-		FKCHAR				m_szFileName[50];			// 文件名
-		FKCHAR				m_szFileFullPath[150];		// 完整的文件路径
+		FKCHAR				m_szFileName[128];			// 文件名
+		FKCHAR				m_szFileFullPath[256];		// 完整的文件路径
 		unsigned int		m_unSize;					// 文件大小
 		unsigned int		m_unOffset;					// 文件在pak中的偏移量
 	};
@@ -54,7 +54,9 @@ private:
 	// 字符串分割，获得需要的文件类型
 	vector<string>			__FileTypes( string p_szTypes );
 	// 创建文件单元信息
-	bool					__CreateEntry( string p_szFullPath, string p_szFileName );	
+	bool					__CreateEntry( string p_szRootPath, string p_szRelativePath, string p_szFileName );	
+	// 获取子文件夹列表
+	vector<string>			__GetSubDir( string p_szParentDir, string p_szRootDir );
 public:
 	CFKPacket();
 	~CFKPacket();
@@ -70,7 +72,7 @@ public:
 	//----------------------------------------------------------
 	// 为pak中添加/删除一个文件
 	// 注意：调用后请调用 RebuildPAK() 来保证重新打包
-	bool					AppendFile( string p_szFilePath );
+	bool					AppendFile( string p_szRootPath, string p_szRelativePath, string p_szFileName );
 	bool					RemoveFile( string p_szFilePath );
 	// 重新打包
 	// 注意：若包内信息无任何更改，依然返回false

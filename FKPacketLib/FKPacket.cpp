@@ -44,17 +44,19 @@ vector<string> CFKPacket::__FileTypes( string p_szTypes )
 	return vecSplitTypes;
 }
 //-------------------------------------------------------------------------
-bool CFKPacket::__CreateEntry( string p_szFullPath, string p_szFileName )
+bool CFKPacket::__CreateEntry( string p_szRootPath, string p_szRelativePath, string p_szFileName )
 {
 	ifstream  FileIn;
 	SFileEntry tagEntry;
 
 	string szEntryName;
-	szEntryName += p_szFullPath;
+	szEntryName += p_szRootPath;
+	szEntryName += "\\";
+	szEntryName += p_szRelativePath;
 	szEntryName += "\\";
 	szEntryName += p_szFileName;
-	memcpy( tagEntry.m_szFileName, p_szFileName.c_str(), 50 );
-	memcpy( tagEntry.m_szFileFullPath, szEntryName.c_str(), 150 );
+	memcpy( tagEntry.m_szFileName, (p_szRelativePath + "\\" + p_szFileName).c_str(), 128 );
+	memcpy( tagEntry.m_szFileFullPath, szEntryName.c_str(), 256 );
 
 	FileIn.open( szEntryName, ifstream::binary | ifstream::ate );
 	if( !FileIn.is_open() )
@@ -65,6 +67,35 @@ bool CFKPacket::__CreateEntry( string p_szFullPath, string p_szFileName )
 
 	m_vecFileEntries.push_back( tagEntry );
 	return true;
+}
+//-------------------------------------------------------------------------
+// 遍历一个文件夹的子文件夹
+vector<string> CFKPacket::__GetSubDir( string p_szParentDir, string p_szRootDir )
+{
+	DIR* pDir = NULL;
+	dirent* pEntry = NULL;
+	vector<string> vecSubDir;
+
+	pDir = opendir( p_szParentDir.c_str() );
+	if( pDir )
+	{
+		while( pEntry = readdir( pDir ) )
+		{
+			if( pEntry->d_type == DT_DIR && (strcmp(pEntry->d_name, ".") != 0) && (strcmp(pEntry->d_name, "..") != 0) )
+			{
+				string szSubDir = p_szParentDir + "\\" + pEntry->d_name;							// 绝对路径
+				int nPos = szSubDir.find_first_of( p_szParentDir + "\\", 0 );
+				if( nPos == string::npos )
+					break;
+				string szRelativeDirPath = szSubDir;
+				szRelativeDirPath.erase( 0, strlen(p_szRootDir.c_str()) + 1 );		// 相对根目录的相对路径
+				vecSubDir.push_back( szRelativeDirPath );
+				vector< string > vec = __GetSubDir( szSubDir, p_szRootDir );
+				copy( vec.begin(),vec.end(),back_insert_iterator<vector<string> >( vecSubDir ) );
+			}
+		}
+	}
+	return vecSubDir;
 }
 //-------------------------------------------------------------------------
 CFKPacket::CFKPacket()
@@ -81,7 +112,8 @@ CFKPacket::~CFKPacket()
 //-------------------------------------------------------------------------
 // 打包一个pak
 // 如果需要对指定种类的文件进行打包，第三个参数可如下类似传入 ".jpg|.png|.bmp"
-bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bIsEntry, string p_szType )
+bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, 
+						  bool p_bIsEntry, string p_szType )
 {
 	m_bIsLoadedPak = false;
 	m_szPakName = p_szPakName;
@@ -101,8 +133,19 @@ bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bI
 	vector<string>	vecCorrectTypes = __FileTypes(p_szType);
 	DIR* pDir = NULL;
 	dirent* pEntry = NULL;
-	if( pDir = opendir( p_szSrcRootPath.c_str() ))
+
+	// 获取目标目录的全部子目录
+	vector<string> vecAllSubDir = __GetSubDir( p_szSrcRootPath, p_szSrcRootPath );
+	// 添加根目录本身
+	vecAllSubDir.push_back(".");
+
+	// 遍历全部子目录
+	vector<string>::iterator Ite = vecAllSubDir.begin();
+	for( ; Ite != vecAllSubDir.end(); ++Ite )
 	{
+		pDir = opendir(( p_szSrcRootPath + "\\" + (*Ite) ).c_str());
+		if( pDir == NULL )
+			continue;
 		while( pEntry = readdir( pDir ))
 		{
 			if( pEntry->d_type != DT_DIR && pEntry->d_type == DT_REG )
@@ -129,11 +172,10 @@ bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bI
 				if( bCorrectType )
 				{
 					nFileNum++;
-					if( !__CreateEntry( p_szSrcRootPath, pEntry->d_name ) )
+					if( !__CreateEntry( p_szSrcRootPath, (*Ite).c_str(), pEntry->d_name ) )
 						return false;
 				}
 			}
-
 		}
 	}
 
@@ -256,19 +298,16 @@ bool CFKPacket::ReadPAK( string p_szPakPath )
 //-------------------------------------------------------------------------
 // 为pak中添加一个文件
 // 注意：调用后请调用 RebuildPAK() 来保证重新打包
-bool CFKPacket::AppendFile( string p_szFilePath )
+bool CFKPacket::AppendFile( string p_szRootPath, string p_szRelativePath, string p_szFileName )
 {
-	int nFound = p_szFilePath.find_last_of("/\\");
-	string szPath = p_szFilePath.substr( 0, nFound + 1 );
-	string szFile = p_szFilePath.substr( nFound + 1 );
-	
+	string szFilePath = p_szRelativePath + "\\" + p_szFileName;
 	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
 	{
-		if( !szFile.compare( m_vecFileEntries[i].m_szFileName ) )
+		if( !szFilePath.compare( m_vecFileEntries[i].m_szFileName ) )
 			return false;
 	}
 
-	if( !__CreateEntry( szPath, szFile ))
+	if( !__CreateEntry( p_szRootPath, p_szRelativePath, p_szFileName ))
 		return false;
 
 	if( m_vecChanges.empty() )
