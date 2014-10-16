@@ -20,6 +20,8 @@ public:
 public:
 	CString m_strSource;
 	CString m_strDestination;
+	vector<CString>	m_vecStrSource;
+	vector<CString> m_vecStrDestination;
 	CFKPacket* m_pFKPacket;
 	CListCtrl* m_pFileList;
 private:
@@ -39,4 +41,5 @@ public:
 	afx_msg void OnBnClickedButton2();
 	afx_msg void OnBnClickedButton3();
 	afx_msg void OnBnClickedButton4();
+	afx_msg void OnBnClickedButton5();
 };

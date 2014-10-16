@@ -34,6 +34,7 @@ BEGIN_MESSAGE_MAP(CFKPackToolDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON2, &CFKPackToolDlg::OnBnClickedButton2)
 	ON_BN_CLICKED(IDC_BUTTON3, &CFKPackToolDlg::OnBnClickedButton3)
 	ON_BN_CLICKED(IDC_BUTTON4, &CFKPackToolDlg::OnBnClickedButton4)
+	ON_BN_CLICKED(IDC_BUTTON5, &CFKPackToolDlg::OnBnClickedButton5)
 END_MESSAGE_MAP()
 
 
@@ -111,6 +112,7 @@ void CFKPackToolDlg::OnBnClickedButton1()
 	if (NULL!=lpDlist)
 	{
 		SHGetPathFromIDList(lpDlist,szSrcPath);
+		m_vecStrSource.clear();
 		m_strSource=szSrcPath;
 		GetDlgItem( IDC_EDIT1 )->SetWindowText( m_strSource );
 	}
@@ -123,13 +125,14 @@ void CFKPackToolDlg::OnBnClickedButton2()
 	CFileDialog FileDlg(FALSE,
 		_T("pak"),
 		NULL,
-		OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT,
+		OFN_HIDEREADONLY,
 		szFilter,
 		NULL,
 		0,
 		TRUE);
 	if (IDOK==FileDlg.DoModal())
 	{
+		m_vecStrDestination.clear();
 		m_strDestination=FileDlg.GetPathName();
 		GetDlgItem( IDC_EDIT2 )->SetWindowText( m_strDestination );
 	}
@@ -139,35 +142,52 @@ void CFKPackToolDlg::OnBnClickedButton2()
 void CFKPackToolDlg::OnBnClickedButton3()
 {
 	CString strMsg;
-	int nSrcType=__CheckSourceFileName(m_strSource);
-	if (-1 == nSrcType)
-	{
-		strMsg=_T("请选择资源文件/目录");
-		MessageBox(strMsg);
-		return;
-	}
-	int nDesType=__CheckDestinationFileName(m_strDestination);
-	if (-1 == nDesType)
-	{
-		strMsg=_T("请选择目标文件");
-		MessageBox(strMsg);
-		return;
-	}
-
 	if( m_pFKPacket == NULL )
 	{
 		strMsg=_T("不可预料的错误，请重启本软件");
 		MessageBox(strMsg);
 		return;
 	}
-
-	m_pFKPacket->Clear();
-	if( !m_pFKPacket->CreatePAK( LPCSTR(m_strDestination), LPCSTR(m_strSource) ) )
+	if( m_vecStrDestination.size() > 0 && m_vecStrSource.size() > 0 && 
+		m_vecStrDestination.size() == m_vecStrSource.size() )
 	{
+		for( unsigned int i = 0; i < m_vecStrSource.size(); ++i )
+		{
+			m_pFKPacket->Clear();
+			if( !m_pFKPacket->CreatePAK( LPCSTR(m_vecStrDestination[i]), LPCSTR(m_vecStrSource[i]) ) )
+			{
+				m_pFKPacket->Clear();
+				strMsg=_T("压缩失败，请联系开发人员");
+				MessageBox(strMsg);
+				return;
+			}
+		}
+	}
+	else
+	{
+		int nSrcType=__CheckSourceFileName(m_strSource);
+		if (-1 == nSrcType)
+		{
+			strMsg=_T("请选择资源文件/目录");
+			MessageBox(strMsg);
+			return;
+		}
+		int nDesType=__CheckDestinationFileName(m_strDestination);
+		if (-1 == nDesType)
+		{
+			strMsg=_T("请选择目标文件");
+			MessageBox(strMsg);
+			return;
+		}
+
 		m_pFKPacket->Clear();
-		strMsg=_T("压缩失败，请联系开发人员");
-		MessageBox(strMsg);
-		return;
+		if( !m_pFKPacket->CreatePAK( LPCSTR(m_strDestination), LPCSTR(m_strSource) ) )
+		{
+			m_pFKPacket->Clear();
+			strMsg=_T("压缩失败，请联系开发人员");
+			MessageBox(strMsg);
+			return;
+		}
 	}
 
 	m_pFKPacket->Clear();
@@ -287,4 +307,74 @@ void CFKPackToolDlg::OnBnClickedButton4()
 	strMsg=_T("读包完成");
 	MessageBox(strMsg);
 	return;
+}
+
+// 多目录配置加载
+void CFKPackToolDlg::OnBnClickedButton5()
+{
+	TCHAR szFilter[] = _T("源目录配置文件 (*.cfg)||");
+	CFileDialog FileDlg(FALSE,
+		_T("cfg"),
+		NULL,
+		OFN_HIDEREADONLY,
+		szFilter,
+		NULL,
+		0,
+		TRUE);
+	if (IDOK==FileDlg.DoModal())
+	{
+		m_strSource="";
+		m_strDestination="";
+		m_vecStrSource.clear();
+		m_vecStrDestination.clear();
+
+		CString szCfg;
+		szCfg=FileDlg.GetPathName();
+		int nDirNum = 0;
+		nDirNum = GetPrivateProfileInt( "需要打包的文件夹", "总数", 0, szCfg );
+		for( int i = 0; i < nDirNum; ++i )
+		{
+			CString szTmp;
+			CString szSectionName;
+			szSectionName.Format("%d", i+1 );
+			GetPrivateProfileString( "需要打包的文件夹", szSectionName, NULL, szTmp.GetBuffer(100), 100, szCfg );
+			m_vecStrSource.push_back( szTmp );
+			
+
+			CString szDstTmp;
+			szDstTmp.Format("%s.pak", szTmp );
+			m_vecStrDestination.push_back( szDstTmp );
+		}
+
+
+		for( unsigned int i = 0; i < m_vecStrSource.size(); ++i )
+		{
+			CString tmp = m_strSource;
+			if( i == 0 )
+			{
+				m_strSource.Format( "%s", m_vecStrSource[i] );
+			}
+			else
+			{
+				m_strSource.Format( "%s%s", tmp, m_vecStrSource[i] );
+			}
+			m_strSource += ";";
+		}
+		GetDlgItem( IDC_EDIT1 )->SetWindowText( m_strSource );
+
+		for( unsigned int i = 0; i < m_vecStrDestination.size(); ++i )
+		{
+			CString tmp = m_strDestination;
+			if( i == 0 )
+			{
+				m_strDestination.Format( "%s", m_vecStrDestination[i] );
+			}
+			else
+			{
+				m_strDestination.Format( "%s%s", tmp, m_vecStrDestination[i] );
+			}
+			m_strDestination += ";";
+		}
+		GetDlgItem( IDC_EDIT2 )->SetWindowText( m_strDestination );
+	}
 }
