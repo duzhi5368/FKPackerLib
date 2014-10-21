@@ -44,7 +44,7 @@ vector<string> CFKPacket::__FileTypes( string p_szTypes )
 	return vecSplitTypes;
 }
 //-------------------------------------------------------------------------
-bool CFKPacket::__CreateEntry( string p_szRootPath, string p_szRelativePath, string p_szFileName )
+bool CFKPacket::__CreateEntry( string p_szRootPath, string p_szRelativePath, string p_szFileName, ENUM_SubPackFileState p_eType )
 {
 	ifstream  FileIn;
 	SFileEntry tagEntry;
@@ -63,6 +63,35 @@ bool CFKPacket::__CreateEntry( string p_szRootPath, string p_szRelativePath, str
 		return false;
 	tagEntry.m_unSize = ( unsigned int )FileIn.tellg();
 	FileIn.close();
+	tagEntry.m_eState = p_eType;
+	tagEntry.m_unCompressedSize = 0;	// 此时不知道压缩大小
+	tagEntry.m_unOffset = 0;			// 此时还不知道偏移量
+
+	m_vecFileEntries.push_back( tagEntry );
+	return true;
+}
+//-------------------------------------------------------------------------
+bool CFKPacket::__CreateEntry( string p_szFileFullName,string p_szFileName, ENUM_SubPackFileState p_eType)
+{
+	ifstream  FileIn;
+	SFileEntry tagEntry;
+
+	//string szEntryName = p_szFileFullName;
+	//int nFound = szEntryName.find_last_of('//');
+	//if( nFound == string::npos )
+	//{
+	//	nFound = szEntryName.find_last_of('\\');
+	//}
+	//string szFileName = szEntryName.substr( nFound + 1 ); 
+	memcpy( tagEntry.m_szFileName, p_szFileName.c_str(), 128 );
+	memcpy( tagEntry.m_szFileFullPath, p_szFileFullName.c_str(), 256 );
+
+	FileIn.open( p_szFileFullName, ifstream::binary | ifstream::ate );
+	if( !FileIn.is_open() )
+		return false;
+	tagEntry.m_unSize = ( unsigned int )FileIn.tellg();
+	FileIn.close();
+	tagEntry.m_eState = p_eType;
 	tagEntry.m_unCompressedSize = 0;	// 此时不知道压缩大小
 	tagEntry.m_unOffset = 0;			// 此时还不知道偏移量
 
@@ -138,8 +167,8 @@ CFKPacket::~CFKPacket()
 //-------------------------------------------------------------------------
 // 打包一个pak
 // 如果需要对指定种类的文件进行打包，第三个参数可如下类似传入 ".jpg|.png|.bmp"
-bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bIsUseCompress,
-						  bool p_bIsEntry, string p_szType )
+bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, 
+						  bool p_bIsUseCompress, bool p_bIsEntry, string p_szType )
 {
 	m_bIsLoadedPak = false;
 	m_szPakName = p_szPakName;
@@ -154,6 +183,8 @@ bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bI
 	m_tagPakHead.m_bIsUseEncrypt	= p_bIsEntry;
 	m_tagPakHead.m_bIsZipComperssed	= p_bIsUseCompress;
 	m_tagPakHead.m_cEncryptVal		= (char)(rand() % 256);
+	m_tagPakHead.m_bIsSubPack		= false;
+	m_tagPakHead.m_nCurVersion		= 0;
 	memcpy( m_tagPakHead.m_szFileID, "FKPAK\0", 6 );
 	memcpy( m_tagPakHead.m_szVersion, g_szVersion, 4 );
 
@@ -323,6 +354,152 @@ bool CFKPacket::CreatePAK( string p_szPakName, string p_szSrcRootPath, bool p_bI
 	return true;
 }
 //-------------------------------------------------------------------------
+// 打包一个补丁pak
+bool CFKPacket::CreatePAH( string p_szPakName, vector<SPatchFileInfo> p_vecPathFile,
+								  int p_nVersion, bool p_bIsUseCompress, bool p_bIsEntry )
+{
+	m_bIsLoadedPak = false;
+	m_szPakName = p_szPakName;
+
+	// 重置随机数种子
+	srand((unsigned int)time(NULL));
+
+	ofstream		PAKOut;
+	ifstream		FileIn;
+	int				nFileNum = 0;
+
+	m_tagPakHead.m_bIsUseEncrypt	= p_bIsEntry;
+	m_tagPakHead.m_bIsZipComperssed	= p_bIsUseCompress;
+	m_tagPakHead.m_cEncryptVal		= (char)(rand() % 256);
+	m_tagPakHead.m_bIsSubPack		= true;
+	m_tagPakHead.m_nCurVersion		= p_nVersion;
+	memcpy( m_tagPakHead.m_szFileID, "FKPAK\0", 6 );
+	memcpy( m_tagPakHead.m_szVersion, g_szVersion, 4 );
+
+	// 遍历全部文件
+	vector<SPatchFileInfo>::iterator Ite = p_vecPathFile.begin();
+	for( ; Ite != p_vecPathFile.end(); ++Ite )
+	{
+		nFileNum++;
+		if( !__CreateEntry( (*Ite).m_szFileFullPath, (*Ite).m_szFillName, (*Ite).m_eFileState ) )
+			return false;
+	}
+
+	m_tagPakHead.m_nFileNum	= nFileNum;
+	int nBaseOffset = sizeof( SPacketHead );
+
+	if( nFileNum )
+	{
+		PAKOut.open( p_szPakName, ofstream::binary | ofstream::trunc );
+		if( !PAKOut.is_open() )
+			return false;
+
+		// 写包头信息
+		PAKOut.write( (FKCHAR*)&m_tagPakHead, sizeof(SPacketHead) );
+		FKCHAR* szBuffer = NULL;
+
+		// 写文件信息
+		for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+		{
+			int nSize = m_vecFileEntries[i].m_unSize;
+			szBuffer = new FKCHAR[nSize];
+
+			FileIn.open( m_vecFileEntries[i].m_szFileFullPath, ifstream::binary );
+			if( !FileIn.is_open() )
+				return false;
+
+			FileIn.read( szBuffer, nSize );
+			// 加密
+			if( m_tagPakHead.m_bIsUseEncrypt )
+			{
+				for( int j = 0; j < nSize; ++j )
+				{
+					szBuffer[j] += m_tagPakHead.m_cEncryptVal;
+				}
+			}
+
+			// 压缩
+			if( m_tagPakHead.m_bIsZipComperssed && __IsNeedCompress(m_vecFileEntries[i].m_szFileFullPath) )
+			{
+				int nCompressedSize = compressBound( nSize );
+				FKCHAR* szCompressedBuf = new FKCHAR[nCompressedSize];
+				memset( szCompressedBuf, 0, nCompressedSize );
+				uLongf lDstLen = nCompressedSize;
+				int nError = compress2( (unsigned char*)szCompressedBuf, &lDstLen, (unsigned char*)szBuffer, nSize, Z_DEFAULT_COMPRESSION );
+
+				if( nError != Z_OK )
+				{
+					PAKOut.write( szBuffer, nSize );
+					m_vecFileEntries[i].m_unCompressedSize = 0;
+					nBaseOffset += nSize;
+				}
+				else
+				{
+					// 压缩成功
+					m_vecFileEntries[i].m_unCompressedSize = lDstLen;
+					PAKOut.write( szCompressedBuf, lDstLen );
+					nBaseOffset += lDstLen;
+				}
+
+				delete [] szCompressedBuf;
+			}
+			else
+			{
+				PAKOut.write( szBuffer, nSize );
+				m_vecFileEntries[i].m_unCompressedSize = 0;
+				nBaseOffset += nSize;
+			}
+			delete [] szBuffer;
+			FileIn.close();
+		}
+
+		// 写文件单元信息
+		unsigned int unPos = sizeof( SPacketHead );
+		for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+		{
+			szBuffer = new FKCHAR[sizeof(SFileEntry)];
+			m_vecFileEntries[i].m_unOffset = unPos;
+			if( m_vecFileEntries[i].m_unCompressedSize == 0 )
+			{
+				unPos += m_vecFileEntries[i].m_unSize;
+			}
+			else
+			{
+				unPos += m_vecFileEntries[i].m_unCompressedSize;
+			}
+			memcpy( szBuffer, &(m_vecFileEntries[i]), sizeof(SFileEntry) );
+
+			// 加密
+			if( m_tagPakHead.m_bIsUseEncrypt )
+			{
+				for( unsigned int j = 0; j < sizeof(SFileEntry); ++j )
+				{
+					szBuffer[j] += m_tagPakHead.m_cEncryptVal;
+				}
+			}
+
+			PAKOut.write( szBuffer, sizeof(SFileEntry) );
+			delete [] szBuffer;
+		}
+
+		// 写文件尾信息
+		{
+			szBuffer = new FKCHAR[sizeof(SFileTail)];
+			m_tagFileTail.m_unFileEntryOffset = nBaseOffset;
+			memcpy( szBuffer, &m_tagFileTail, sizeof( SFileTail ) );
+			PAKOut.write( szBuffer, sizeof(SFileTail) );
+			delete [] szBuffer;
+		}
+
+		PAKOut.close();
+	}
+
+	if( nFileNum < 1 )
+		return false;
+
+	return true;
+}
+//-------------------------------------------------------------------------
 // 加载一个pak
 bool CFKPacket::ReadPAK( string p_szPakPath )
 {
@@ -373,7 +550,54 @@ bool CFKPacket::ReadPAK( string p_szPakPath )
 
 	PAKRead.close();
 	m_bIsLoadedPak = true;
+	m_szPakName = p_szPakPath;
 	return true;
+}
+//-------------------------------------------------------------------------
+// 合并一个pak
+bool CFKPacket::MergePAH( string p_szPahPath )
+{
+	if( !m_bIsLoadedPak )
+		return false;
+	// 自己读取这个pah并进行合并处理
+	CFKPacket tagPTH;
+	if( !tagPTH.ReadPAK( p_szPahPath ))
+	{
+		return false;
+	}
+	vector<string>	vecFile = tagPTH.GetAllFileNameInPAK();
+	if( vecFile.size() <= 0 )
+		return false;
+	vector<string>	vecFileFullName = tagPTH.GetAllFilePathNameInPAK();
+	if( vecFileFullName.size() != vecFile.size() )
+		return false;
+
+	vector<string>::iterator Ite = vecFile.begin();
+	for( int nIndex = 0; Ite != vecFile.end(); ++Ite, ++nIndex )
+	{
+		ENUM_SubPackFileState eState = tagPTH.GetFileChangeType( (*Ite) );
+		switch ( eState )
+		{
+		case eFileState_Add:
+			AppendFile( vecFile.at(nIndex), vecFileFullName.at(nIndex) );
+			break;
+		case eFileState_Delete:
+			RemoveFile( vecFile.at(nIndex), vecFileFullName.at(nIndex) );
+			break;
+		case eFileState_Change:
+			ChangeFile( vecFile.at(nIndex), vecFileFullName.at(nIndex) );
+			break;
+		case eFileState_Unknown:
+		default:
+			break;
+		}
+	}
+	if(  tagPTH.GetCurPathVersion() != 0 )
+	{
+		m_tagPakHead.m_nCurVersion = tagPTH.GetCurPathVersion();
+	}
+
+	return RebuildPAK();
 }
 //-------------------------------------------------------------------------
 // 为pak中添加一个文件
@@ -392,6 +616,26 @@ bool CFKPacket::AppendFile( string p_szRootPath, string p_szRelativePath, string
 
 	if( m_vecChanges.empty() )
 	{
+		m_vecChanges.assign( m_vecFileEntries.size(), eFS_Normal );
+	}
+	m_vecChanges.push_back( eFS_Added );
+	return true;
+}
+//-------------------------------------------------------------------------
+bool CFKPacket::AppendFile( string p_szFileName, string p_szFilePathName )
+{
+	string szFilePath = p_szFilePathName;
+	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+	{
+		if( !szFilePath.compare( m_vecFileEntries[i].m_szFileFullPath ) )
+			return false;
+	}
+
+	if( !__CreateEntry( szFilePath, p_szFileName ))
+		return false;
+
+	if( m_vecChanges.empty() )
+	{
 		m_vecChanges.assign( m_vecFileEntries.size() - 1, eFS_Normal );
 	}
 	m_vecChanges.push_back( eFS_Added );
@@ -400,21 +644,55 @@ bool CFKPacket::AppendFile( string p_szRootPath, string p_szRelativePath, string
 //-------------------------------------------------------------------------
 // 为pak中删除一个文件
 // 注意：调用后请调用 RebuildPAK() 来保证重新打包
-bool CFKPacket::RemoveFile( string p_szFilePath )
+bool CFKPacket::RemoveFile( string p_szFileName, string p_szFilePathName )
 {
 	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
 	{
-		if( p_szFilePath.compare( m_vecFileEntries[i].m_szFileName ) == 0 )
+		if( p_szFileName.compare( m_vecFileEntries[i].m_szFileName ) == 0 )
 		{
 			if( m_vecChanges.empty() )
 			{
-				m_vecChanges.assign( m_vecFileEntries.size() - 1, eFS_Normal );
+				m_vecChanges.assign( m_vecFileEntries.size(), eFS_Normal );
 			}
 			m_vecChanges[i] = eFS_Deleted;
 			return true;
 		}
 	}
 	return false;
+}
+//-------------------------------------------------------------------------
+bool CFKPacket::ChangeFile( string p_szFileName, string p_szFilePathName )
+{
+	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+	{
+		if( p_szFileName.compare( m_vecFileEntries[i].m_szFileName ) == 0 )
+		{
+			if( m_vecChanges.empty() )
+			{
+				m_vecChanges.assign( m_vecFileEntries.size(), eFS_Normal );
+			}
+			m_vecChanges[i] = eFS_Changed;
+			break;
+		}
+	}
+
+	if( !__CreateEntry( p_szFilePathName, p_szFileName ))
+		return false;
+
+	if( m_vecChanges.empty() )
+	{
+		m_vecChanges.assign( m_vecFileEntries.size() - 1, eFS_Normal );
+	}
+	m_vecChanges.push_back( eFS_Added );
+	return false;
+}
+//-------------------------------------------------------------------------
+// 获取补丁号
+int CFKPacket::GetCurPathVersion()
+{
+	if(! m_tagPakHead.m_bIsSubPack )
+		return 0;
+	return m_tagPakHead.m_nCurVersion;
 }
 //-------------------------------------------------------------------------
 // 重新打包
@@ -433,13 +711,16 @@ bool CFKPacket::RebuildPAK()
 	PAKOut.open( m_szPakName + ".new", ofstream::binary );
 	if( !PAKOut.is_open() )
 		return false;
+	PAKIn.open( m_szPakName, ios::binary );
+	if( !PAKIn.is_open() )
+		return false;
 
 	int nNumFiles = 0;
 	vector<SFileEntry>	vecOriginal( m_vecFileEntries );
 
 	for( unsigned int i = 0; i < m_vecChanges.size(); ++i )
 	{
-		if( m_vecChanges[i] >= 0 )
+		if( m_vecChanges[i] != eFS_Deleted && m_vecChanges[i] != eFS_Changed )
 		{
 			nNumFiles++;
 		}
@@ -448,48 +729,13 @@ bool CFKPacket::RebuildPAK()
 	m_tagPakHead.m_nFileNum = nNumFiles;
 	PAKOut.write( (FKCHAR*)&m_tagPakHead, sizeof(m_tagPakHead) );
 
-	int nOffset = m_tagFileTail.m_unFileEntryOffset;
-	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
-	{
-		if( m_vecChanges[i] == eFS_Deleted )
-			continue;
-		m_vecFileEntries[i].m_unOffset	= nOffset;
-		if( m_vecFileEntries[i].m_unCompressedSize == 0 )
-		{
-			nOffset += m_vecFileEntries[i].m_unSize;
-		}
-		else
-		{
-			nOffset += m_vecFileEntries[i].m_unCompressedSize;
-		}
-	}
-
+	int nBaseOffset = sizeof( m_tagPakHead );
 	FKCHAR* szBuffer = NULL;
-
-	// 文件信息头
-	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
-	{
-		if(m_vecChanges[i] == eFS_Deleted)
-			continue;
-		szBuffer = new FKCHAR[sizeof(SFileEntry)];
-		memcpy( szBuffer, &(m_vecFileEntries[i]), sizeof(SFileEntry) );
-
-		if( m_tagPakHead.m_bIsUseEncrypt )
-		{
-			for( int j = 0; j < sizeof(SFileEntry); ++j )
-			{
-				szBuffer[j] += m_tagPakHead.m_cEncryptVal;
-			}
-		}
-		
-		PAKOut.write( szBuffer, sizeof(SFileEntry) );
-		delete [] szBuffer;
-	}
 
 	// 文件
 	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
 	{
-		if( m_vecChanges[i] == eFS_Deleted )
+		if( m_vecChanges[i] == eFS_Deleted || m_vecChanges[i] == eFS_Changed )
 		{
 			continue;
 		}
@@ -536,12 +782,14 @@ bool CFKPacket::RebuildPAK()
 			{
 				PAKOut.write( szBuffer, m_vecFileEntries[i].m_unSize );
 				m_vecFileEntries[i].m_unCompressedSize = 0;
+				nBaseOffset += m_vecFileEntries[i].m_unSize;
 			}
 			else
 			{
 				// 压缩成功
 				m_vecFileEntries[i].m_unCompressedSize = lDstLen;
 				PAKOut.write( szCompressedBuf, lDstLen );
+				nBaseOffset += lDstLen;
 			}
 			delete [] szCompressedBuf;
 		}
@@ -549,12 +797,44 @@ bool CFKPacket::RebuildPAK()
 		{
 			PAKOut.write( szBuffer, m_vecFileEntries[i].m_unSize );
 			m_vecFileEntries[i].m_unCompressedSize = 0;
+			nBaseOffset += m_vecFileEntries[i].m_unSize;
 		}
 	}
 
 	PAKIn.close();
 	delete [] szBuffer;
 	vecOriginal.clear();
+
+
+	// 文件信息头
+	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+	{
+		if(m_vecChanges[i] == eFS_Deleted || m_vecChanges[i] == eFS_Changed)
+			continue;
+		szBuffer = new FKCHAR[sizeof(SFileEntry)];
+		memcpy( szBuffer, &(m_vecFileEntries[i]), sizeof(SFileEntry) );
+
+		if( m_tagPakHead.m_bIsUseEncrypt )
+		{
+			for( int j = 0; j < sizeof(SFileEntry); ++j )
+			{
+				szBuffer[j] += m_tagPakHead.m_cEncryptVal;
+			}
+		}
+		
+		PAKOut.write( szBuffer, sizeof(SFileEntry) );
+		delete [] szBuffer;
+	}
+
+	// 写文件尾信息
+	{
+		szBuffer = new FKCHAR[sizeof(SFileTail)];
+		m_tagFileTail.m_unFileEntryOffset = nBaseOffset;
+		memcpy( szBuffer, &m_tagFileTail, sizeof( SFileTail ) );
+		PAKOut.write( szBuffer, sizeof(SFileTail) );
+		delete [] szBuffer;
+	}
+
 	PAKOut.close();
 
 	// 删除老版本的pak文件
@@ -691,6 +971,23 @@ int CFKPacket::GetFileCompressSize( string p_szName )
 	return -1;
 }
 //-------------------------------------------------------------------------
+// 获取某文件的修改类型
+ENUM_SubPackFileState CFKPacket::GetFileChangeType( string p_szName )
+{
+	if( !m_bIsLoadedPak )
+	{
+		return eFileState_Unknown;
+	}
+	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
+	{
+		if( strcmp( m_vecFileEntries[i].m_szFileName, p_szName.c_str() ) == 0 )
+		{
+			return m_vecFileEntries[i].m_eState;
+		}
+	}
+	return eFileState_Unknown;
+}
+//-------------------------------------------------------------------------
 // 获得包内全部文件名称列表
 vector<string> CFKPacket::GetAllFileNameInPAK()
 {
@@ -702,6 +999,20 @@ vector<string> CFKPacket::GetAllFileNameInPAK()
 	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
 	{
 		vecEntriesName.push_back( m_vecFileEntries[i].m_szFileName );
+	}
+	return vecEntriesName;
+}
+//-------------------------------------------------------------------------
+vector<string> CFKPacket::GetAllFilePathNameInPAK()
+{
+	vector<string> vecEntriesName;
+
+	if( !m_bIsLoadedPak )
+		return vecEntriesName;
+
+	for( unsigned int i = 0; i < m_vecFileEntries.size(); ++i )
+	{
+		vecEntriesName.push_back( m_vecFileEntries[i].m_szFileFullPath );
 	}
 	return vecEntriesName;
 }
