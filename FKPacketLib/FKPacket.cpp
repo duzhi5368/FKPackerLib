@@ -50,12 +50,30 @@ bool CFKPacket::__CreateEntry( string p_szRootPath, string p_szRelativePath, str
 	SFileEntry tagEntry;
 
 	string szEntryName;
-	szEntryName += p_szRootPath;
-	szEntryName += "\\";
-	szEntryName += p_szRelativePath;
-	szEntryName += "\\";
-	szEntryName += p_szFileName;
-	memcpy( tagEntry.m_szFileName, (p_szRelativePath + "\\" + p_szFileName).c_str(), 128 );
+	if( p_szRelativePath == "." )
+	{
+		szEntryName += p_szRootPath;
+		szEntryName += "\\";
+		szEntryName += p_szFileName;
+	}
+	else
+	{
+		szEntryName += p_szRootPath;
+		szEntryName += "\\";
+		szEntryName += p_szRelativePath;
+		szEntryName += "\\";
+		szEntryName += p_szFileName;
+	}
+	string szRelaName;
+	if( p_szRelativePath == "." )
+	{
+		szRelaName = p_szFileName;
+	}
+	else
+	{
+		szRelaName = p_szRelativePath + "\\" + p_szFileName;
+	}
+	memcpy( tagEntry.m_szFileName, szRelaName.c_str(), 128 );
 	memcpy( tagEntry.m_szFileFullPath, szEntryName.c_str(), 256 );
 
 	FileIn.open( szEntryName, ifstream::binary | ifstream::ate );
@@ -923,6 +941,13 @@ CFKPacket::SFileEntry* CFKPacket::GetFileInfoFromPAK( string p_szFileName )
 	}
 	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
 	{
+		if( strcmp( m_vecFileEntries[i].m_szFileFullPath, p_szFileName.c_str() ) == 0 )
+		{
+			return &m_vecFileEntries[i];
+		}
+	}
+	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
+	{
 		if( strcmp( m_vecFileEntries[i].m_szFileName, p_szFileName.c_str() ) == 0 )
 		{
 			return &m_vecFileEntries[i];
@@ -940,6 +965,13 @@ int CFKPacket::GetFileSize( string p_szName )
 	}
 	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
 	{
+		if( strcmp( m_vecFileEntries[i].m_szFileFullPath, p_szName.c_str() ) == 0 )
+		{
+			return m_vecFileEntries[i].m_unSize;
+		}
+	}
+	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
+	{
 		if( strcmp( m_vecFileEntries[i].m_szFileName, p_szName.c_str() ) == 0 )
 		{
 			return m_vecFileEntries[i].m_unSize;
@@ -953,6 +985,20 @@ int CFKPacket::GetFileCompressSize( string p_szName )
 	if( !m_bIsLoadedPak )
 	{
 		return -2;
+	}
+	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
+	{
+		if( strcmp( m_vecFileEntries[i].m_szFileFullPath, p_szName.c_str() ) == 0 )
+		{
+			if( m_vecFileEntries[i].m_unCompressedSize == 0 )
+			{
+				return m_vecFileEntries[i].m_unSize;
+			}
+			else
+			{
+				return m_vecFileEntries[i].m_unCompressedSize;
+			}
+		}
 	}
 	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
 	{
@@ -977,6 +1023,13 @@ ENUM_SubPackFileState CFKPacket::GetFileChangeType( string p_szName )
 	if( !m_bIsLoadedPak )
 	{
 		return eFileState_Unknown;
+	}
+	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
+	{
+		if( strcmp( m_vecFileEntries[i].m_szFileFullPath, p_szName.c_str() ) == 0 )
+		{
+			return m_vecFileEntries[i].m_eState;
+		}
 	}
 	for( int i = 0; i < m_tagPakHead.m_nFileNum; ++i )
 	{
